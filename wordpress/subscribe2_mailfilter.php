@@ -1,7 +1,8 @@
  <?php 
-add_filter('s2_registered_subscribers', function($registered, $args) { 
+add_filter('s2_registered_subscribers', function($registered, $args = false) { 
+
 	// $registered is an array with email addresses
-	$activeUsers = new Array();
+	$activeUsers = array();
 
 	foreach ($registered as $registeredEmail) { 
 		// Find the current user role
@@ -14,8 +15,8 @@ add_filter('s2_registered_subscribers', function($registered, $args) {
 			array_push($activeUsers, $registeredEmail);
 		}
 	}
-
+	
 	return $activeUsers;
-}) 
+});
 ?>
 
