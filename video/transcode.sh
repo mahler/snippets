@@ -1,8 +1,9 @@
 #!/usr/bin/env bash
 # =============================================================================
-#  transcode.sh
-#  Transcode video files to a x265/HEVC 720p encoding.
+#  transcode_x265_720p.sh
+#  Transcode video files to x265/HEVC 720p.
 #
+#  Profile:
 #    Container  : Matroska (.mkv)
 #    Video      : HEVC / x265, 8-bit, Main@L3.1, CRF 28, preset slow
 #    Resolution : ≤ 1280×720 (downscale only; never upscale)
@@ -14,9 +15,9 @@
 #    Metadata   : All stream metadata + chapters preserved
 #
 #  Usage:
-#    Single file : ./transcode_megusta.sh input.mkv [output.mkv]
-#    Batch mode  : ./transcode_megusta.sh *.mkv
-#                  ./transcode_megusta.sh /path/to/folder/
+#    Single file : ./transcode_x265_720p.sh input.mkv [output.mkv]
+#    Batch mode  : ./transcode_x265_720p.sh *.mkv
+#                  ./transcode_x265_720p.sh /path/to/folder/
 #
 #  Dependencies : ffmpeg ≥ 4.4 with libx265, ffprobe
 # =============================================================================
@@ -24,11 +25,11 @@
 set -euo pipefail
 
 # ── Tunables ─────────────────────────────────────────────────────────────────
-CRF=28                   
-PRESET="slow"            
+CRF=28                   # CRF 28 — good quality/size balance for 720p
+PRESET="slow"            # "slow" preset for better compression efficiency
 MAX_WIDTH=1280
 MAX_HEIGHT=720
-PIX_FMT="yuv420p"        
+PIX_FMT="yuv420p"        # 8-bit 4:2:0
 HEVC_PROFILE="main"      # Main profile → L3.1 for 720p
 OUTPUT_SUFFIX="_720p.HEVC.x265"
 # ─────────────────────────────────────────────────────────────────────────────
@@ -69,7 +70,7 @@ if [[ -d "$1" ]]; then
     fi
     EXPLICIT_OUTPUT=""
 else
-    # Check if the second argument looks like an output filename
+    # Check if second argument looks like an output filename
     if [[ $# -eq 2 && "$2" == *.mkv ]]; then
         INPUT_FILES=("$1")
         EXPLICIT_OUTPUT="$2"
@@ -101,7 +102,7 @@ build_scale_filter() {
 }
 
 # ── Audio strategy ───────────────────────────────────────────────────────────
-# Pass through EAC3/AC3 untouched; everything else → AAC-LC.
+# EAC3/AC3/DTS/TrueHD passed through untouched; everything else → AAC-LC.
 # Populates the caller's AUDIO_ARGS array (avoids word-splitting / set -u issues).
 set_audio_args() {
     local input_file=$1
@@ -122,6 +123,8 @@ set_audio_args() {
             channels=$(ffprobe -v error -select_streams a:0 \
                 -show_entries stream=channels -of csv=p=0 "$input_file" 2>/dev/null | head -1)
             channels=${channels:-2}   # default to stereo if probe returns empty
+            channels=$(echo "$channels" | tr -cd '0-9')  # strip any stray chars
+            channels=${channels:-2}   # re-default in case stripping left it empty
             if (( channels > 2 )); then
                 AUDIO_ARGS=("-c:a" "aac" "-b:a" "640k" "-ac" "6")
             else
@@ -161,7 +164,7 @@ transcode_file() {
     set_audio_args "$input_file"
     info "Audio  : ${AUDIO_ARGS[*]}"
 
-    # Build x265-params matching MeGusta's observed MediaInfo output:
+    # x265 encoding parameters
     #   open-gop, keyint=240, min-keyint=24, scenecut=40,
     #   bframes=8, b-adapt=2, rc-lookahead=40, aq-mode=2, aq-strength=1.0
     local x265_params="open-gop=1:keyint=240:min-keyint=24:scenecut=40:\
@@ -174,6 +177,7 @@ weightp=1:weightb=0:\
 log-level=warning"
 
     ffmpeg -hide_banner -loglevel warning -stats \
+        -probesize 50M -analyzeduration 50M \
         -i "$input_file" \
         -vf "$scale_filter" \
         -c:v libx265 \
