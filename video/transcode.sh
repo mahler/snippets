@@ -134,7 +134,24 @@ set_audio_args() {
     esac
 }
 
-# ── Main transcode function ───────────────────────────────────────────────────
+# ── Subtitle strategy ────────────────────────────────────────────────────────
+# mov_text (MP4 text subs) can't be copied into MKV — convert to srt.
+# Image-based subs (PGS, VOBSUB) and already-MKV-compatible subs are copied.
+set_subtitle_args() {
+    local input_file=$1
+    local has_movtext
+    has_movtext=$(ffprobe -v error -select_streams s \
+        -show_entries stream=codec_name -of csv=p=0 "$input_file" 2>/dev/null \
+        | grep -c "mov_text" || true)
+
+    if (( has_movtext > 0 )); then
+        SUBTITLE_ARGS=("-c:s" "srt")
+    else
+        SUBTITLE_ARGS=("-c:s" "copy")
+    fi
+}
+
+
 transcode_file() {
     local input_file=$1
     local output_file=$2
@@ -164,6 +181,10 @@ transcode_file() {
     set_audio_args "$input_file"
     info "Audio  : ${AUDIO_ARGS[*]}"
 
+    SUBTITLE_ARGS=()
+    set_subtitle_args "$input_file"
+    info "Subs   : ${SUBTITLE_ARGS[*]}"
+
     # x265 encoding parameters
     #   open-gop, keyint=240, min-keyint=24, scenecut=40,
     #   bframes=8, b-adapt=2, rc-lookahead=40, aq-mode=2, aq-strength=1.0
@@ -187,7 +208,7 @@ log-level=warning"
         -pix_fmt "$PIX_FMT" \
         -x265-params "$x265_params" \
         "${AUDIO_ARGS[@]}" \
-        -c:s copy \
+        "${SUBTITLE_ARGS[@]}" \
         -map 0 \
         -map_metadata 0 \
         -map_chapters 0 \
@@ -208,7 +229,6 @@ for input_file in "${INPUT_FILES[@]}"; do
     fi
 
     # Skip macOS resource fork ghost files (._filename)
-    local basename
     basename=$(basename "$input_file")
     if [[ "$basename" == ._* ]]; then
         warn "Skipping macOS metadata file: $input_file"
