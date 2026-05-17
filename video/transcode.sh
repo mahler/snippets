@@ -209,7 +209,9 @@ log-level=warning"
         -x265-params "$x265_params" \
         "${AUDIO_ARGS[@]}" \
         "${SUBTITLE_ARGS[@]}" \
-        -map 0 \
+        -map 0:V \
+        -map 0:a \
+        -map 0:s? \
         -map_metadata 0 \
         -map_chapters 0 \
         -movflags +faststart \
